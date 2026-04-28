@@ -1,0 +1,25 @@
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #f4f6f8;
+}
+
+.page {
+  padding: 40px;
+}
+
+.hero {
+  background: linear-gradient(135deg, #007cf0, #00dfd8);
+  color: white;
+  padding: 60px;
+  border-radius: 10px;
+  font-size: 28px;
+}
+
+.card {
+  margin-top: 20px;
+  padding: 20px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
