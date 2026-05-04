@@ -1,37 +1,82 @@
 import { useEffect } from "react";
 
-let lastViewName = null;
-let lastViewTimestamp = 0;
+function sanitizeViewName(viewName) {
+  if (!viewName) return "home";
 
-const useTargetView = (viewName) => {
-  useEffect(() => {
-    const fireView = () => {
-      if (!(window.adobe && window.adobe.target)) return;
+  return String(viewName)
+    .trim()
+    .replace(/^[/#]+|[/#]+$/g, "") || "home";
+}
 
-      const now = Date.now();
+function waitForAlloy(maxAttempts = 20, delay = 250) {
+  return new Promise((resolve, reject) => {
+    let attempts = 0;
 
-      // Prevent rapid duplicate impressions for same view in local/dev rendering
-      if (lastViewName === viewName && now - lastViewTimestamp < 500) {
+    const check = () => {
+      const ready =
+        typeof window !== "undefined" &&
+        typeof window.alloy === "function" &&
+        window.__alloyReady === true;
+
+      if (ready) {
+        resolve();
         return;
       }
 
-      lastViewName = viewName;
-      lastViewTimestamp = now;
+      attempts += 1;
 
-      console.log("Triggering Target View:", viewName);
-      window.adobe.target.triggerView(viewName);
+      if (attempts >= maxAttempts) {
+        reject(new Error("Adobe Experience Platform Web SDK is not ready on window.alloy."));
+        return;
+      }
+
+      window.setTimeout(check, delay);
     };
 
-    if (window.adobe && window.adobe.target) {
-      fireView();
-    } else {
-      document.addEventListener("at-library-loaded", fireView);
+    check();
+  });
+}
+
+export default function useTargetView({ viewName, pageName, target = {} }) {
+  useEffect(() => {
+    const currentView = sanitizeViewName(viewName);
+    let isCancelled = false;
+
+    async function sendViewEvent() {
+      try {
+        await waitForAlloy();
+
+        if (isCancelled) {
+          return;
+        }
+
+        const result = await window.alloy("sendEvent", {
+          renderDecisions: true,
+          xdm: {
+            web: {
+              webPageDetails: {
+                name: pageName || currentView,
+                viewName: currentView
+              }
+            }
+          },
+          data: {
+            __adobe: {
+              target
+            }
+          }
+        });
+
+        console.info(`[Web SDK] sendEvent(viewName="${currentView}")`, result);
+      } catch (error) {
+        console.warn("[Web SDK] Unable to send SPA view event:", error.message);
+      }
     }
 
-    return () => {
-      document.removeEventListener("at-library-loaded", fireView);
-    };
-  }, [viewName]);
-};
+    sendViewEvent();
 
-export default useTargetView;
+    return () => {
+      isCancelled = true;
+    };
+  }, [viewName, pageName, JSON.stringify(target)]);
+}

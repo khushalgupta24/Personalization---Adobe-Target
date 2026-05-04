@@ -1,7 +1,10 @@
 import useTargetView from "../hooks/useTargetView";
 
 export default function Cart() {
-  useTargetView("cart");
+  useTargetView("cart", "Cart", {
+    "profile.loginStatus": "false"
+  });
+
 
   return (
     <div className="page">
