@@ -1,82 +1,67 @@
 import { useEffect } from "react";
 
-function sanitizeViewName(viewName) {
-  if (!viewName) return "home";
-
-  return String(viewName)
-    .trim()
-    .replace(/^[/#]+|[/#]+$/g, "") || "home";
-}
-
-function waitForAlloy(maxAttempts = 20, delay = 250) {
+function waitForAlloy(timeoutMs = 5000, intervalMs = 50) {
   return new Promise((resolve, reject) => {
-    let attempts = 0;
+    const start = Date.now();
 
-    const check = () => {
-      const ready =
-        typeof window !== "undefined" &&
-        typeof window.alloy === "function" &&
-        window.__alloyReady === true;
-
-      if (ready) {
-        resolve();
+    const timer = setInterval(() => {
+      if (typeof window.alloy === "function") {
+        clearInterval(timer);
+        resolve(window.alloy);
         return;
       }
 
-      attempts += 1;
-
-      if (attempts >= maxAttempts) {
-        reject(new Error("Adobe Experience Platform Web SDK is not ready on window.alloy."));
-        return;
+      if (Date.now() - start >= timeoutMs) {
+        clearInterval(timer);
+        reject(
+          new Error(
+            "Adobe Experience Platform Web SDK is not ready on window.alloy."
+          )
+        );
       }
-
-      window.setTimeout(check, delay);
-    };
-
-    check();
+    }, intervalMs);
   });
 }
 
-export default function useTargetView({ viewName, pageName, target = {} }) {
+export default function useTargetView(viewName) {
   useEffect(() => {
-    const currentView = sanitizeViewName(viewName);
-    let isCancelled = false;
+    if (!viewName) return;
+
+    let cancelled = false;
 
     async function sendViewEvent() {
       try {
-        await waitForAlloy();
+        const alloy = await waitForAlloy();
 
-        if (isCancelled) {
-          return;
-        }
+        if (cancelled) return;
 
-        const result = await window.alloy("sendEvent", {
+        console.log(`[Web SDK] sendEvent("${viewName}")`);
+
+        await alloy("sendEvent", {
           renderDecisions: true,
           xdm: {
+            eventType: "web.webpagedetails.pageViews",
             web: {
               webPageDetails: {
-                name: pageName || currentView,
-                viewName: currentView
+                name: document.title,
+                viewName: viewName,
+                URL: window.location.href
+              },
+              webReferrer: {
+                URL: document.referrer || ""
               }
-            }
-          },
-          data: {
-            __adobe: {
-              target
             }
           }
         });
-
-        console.info(`[Web SDK] sendEvent(viewName="${currentView}")`, result);
       } catch (error) {
-        console.warn("[Web SDK] Unable to send SPA view event:", error.message);
+        console.error("[Web SDK] Unable to send SPA view event:", error);
       }
     }
 
     sendViewEvent();
 
     return () => {
-      isCancelled = true;
+      cancelled = true;
     };
-  }, [viewName, pageName, JSON.stringify(target)]);
+  }, [viewName]);
 }
